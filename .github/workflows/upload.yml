@@ -1,10 +1,9 @@
 name: YouTube Shorts Uploader
 
-# Run this workflow every 5 hours
 on:
   schedule:
-    - cron: "0 */5 * * *"  # every 5 hours, at minute 0
-  workflow_dispatch:        # allows manual trigger from GitHub UI
+    - cron: "0 */5 * * *"  # every 5 hours
+  workflow_dispatch:        # manual trigger
 
 jobs:
   upload:
