@@ -16,7 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
-    "CLIPS_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos",
+    "CLIPS_DIR": "Videos",
     "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
     "CLIENT_SECRETS_FILE": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\client_secrets.json",
     "TOKEN_FILE": "token.json",
