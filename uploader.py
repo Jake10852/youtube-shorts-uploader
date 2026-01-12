@@ -1,5 +1,4 @@
 import os
-import time
 import logging
 import shutil
 import re
@@ -17,15 +16,14 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # ---------------------------------
 CONFIG = {
     "CLIPS_DIR": "Videos",
-    "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
-    "CLIENT_SECRETS_FILE": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\client_secrets.json",
+    "UPLOADED_DIR": "Videos/Uploaded",
+    "CLIENT_SECRETS_FILE": "client_secrets.json",
     "TOKEN_FILE": "token.json",
     "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 10,
-    "UPLOAD_INTERVAL_HOURS": 5
+    "MAX_RETRIES": 10
 }
 
 # ---------------------------------
@@ -67,16 +65,8 @@ def parse_txt_file(txt_path: Path):
 # CLEAN TITLE
 # ---------------------------------
 def clean_title(title: str) -> str:
-    """
-    Remove emojis and invalid characters from a YouTube video title.
-    Keeps normal letters, numbers, punctuation, and basic symbols.
-    """
-    # Remove emojis & non-standard symbols
     cleaned = re.sub(r'[^\w\s\-\.,!?&@#]+', '', title)
-    
-    # Collapse multiple spaces
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    
     return cleaned
 
 # ---------------------------------
@@ -109,65 +99,64 @@ def upload_video(youtube, title, description, video_path):
         except HttpError as e:
             logging.warning(f"HTTP error during upload: {e}")
             retry += 1
-            sleep_time = min(60, 2 ** retry)
-            logging.info(f"Retrying in {sleep_time} seconds...")
-            time.sleep(sleep_time)
     logging.error("Failed to upload after max retries.")
     return False
 
 # ---------------------------------
-# MAIN LOOP — PROCESS FOLDERS WITH INTERVAL
+# MAIN LOOP — PROCESS ALL FOLDERS
 # ---------------------------------
-def uploader_once():
+def uploader_loop():
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
+    uploaded_log = clips_root / "uploaded_list.txt"
+    uploaded_log.touch(exist_ok=True)
+    uploaded_names = set(uploaded_log.read_text().splitlines())
+
     folders = sorted([
         f for f in clips_root.iterdir()
-        if f.is_dir() and f.name != "Uploaded" and not f.name.endswith("_skipped")
+        if f.is_dir() and f.name != uploaded_root.name and f.name not in uploaded_names
     ])
 
-    logging.info(f"Folders remaining for upload: {len(folders)}")
-
     if not folders:
-        logging.info("No clip folders left. Exiting.")
+        logging.info("No new clip folders to upload. Exiting.")
         return
 
-    folder = folders[0]  # pick first folder
-    mp4_files = list(folder.glob("*.mp4"))
-    txt_files = list(folder.glob("*.txt"))
+    for folder in folders:
+        mp4_files = list(folder.glob("*.mp4"))
+        txt_files = list(folder.glob("*.txt"))
 
-    if not mp4_files:
-        logging.warning(f"No video found in {folder}. Marking folder as skipped.")
-        new_name = folder.name
-        if not new_name.endswith("_skipped"):
-            new_name += "_skipped"
-        folder.rename(clips_root / new_name)
-        return
+        if not mp4_files:
+            logging.warning(f"No video found in {folder}. Marking folder as skipped.")
+            new_name = folder.name
+            if not new_name.endswith("_skipped"):
+                new_name += "_skipped"
+            folder.rename(clips_root / new_name)
+            continue
 
-    video_path = mp4_files[0]
-    if txt_files:
-        title, description = parse_txt_file(txt_files[0])
-        title = clean_title(title)
-    else:
-        title = clean_title(video_path.stem)
-        description = ""
-        logging.warning(f"No .txt found for {folder.name}. Using filename as title.")
+        video_path = mp4_files[0]
+        if txt_files:
+            title, description = parse_txt_file(txt_files[0])
+            title = clean_title(title)
+        else:
+            title = clean_title(video_path.stem)
+            description = ""
+            logging.warning(f"No .txt found for {folder.name}. Using filename as title.")
 
-    success = upload_video(youtube, title, description, str(video_path))
+        success = upload_video(youtube, title, description, str(video_path))
 
-    if success:
-        dest = uploaded_root / folder.name
-        folder.rename(dest)
-        logging.info(f"Uploaded and moved folder: {folder.name}")
-
+        if success:
+            dest = uploaded_root / folder.name
+            folder.rename(dest)
+            logging.info(f"Uploaded and moved folder: {folder.name}")
+            with open(uploaded_log, "a") as f:
+                f.write(folder.name + "\n")
 
 # ---------------------------------
 # ENTRY POINT
 # ---------------------------------
 if __name__ == "__main__":
     logging.info("Starting YouTube Shorts uploader...")
-    uploader_once()
-
+    uploader_loop()
