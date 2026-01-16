@@ -1,3 +1,4 @@
+import logging
 def uploader_once():
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
