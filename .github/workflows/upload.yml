@@ -1,5 +1,8 @@
 name: Upload YouTube Shorts
 
+permissions:
+  contents: write   # 👈 ADD THIS
+
 on:
   schedule:
     - cron: '0 */5 * * *'  # every 5 hours
@@ -11,6 +14,9 @@ jobs:
     steps:
       # 1. Check out the repo
       - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
 
       # 2. Set up Python
       - name: Set up Python
