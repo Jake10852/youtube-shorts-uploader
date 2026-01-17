@@ -16,8 +16,8 @@ from google.auth.transport.requests import Request
 CONFIG = {
     "CLIPS_DIR": "Videos",
     "UPLOADED_FILE": "uploaded_videos.txt",  # File to track uploaded folders
-    "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
-    "CLIENT_SECRETS_FILE": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\client_secrets.json",
+    "UPLOADED_DIR": "Videos/Uploaded",
+    "CLIENT_SECRETS_FILE": "client_secrets.json",
     "TOKEN_FILE": "token.json",
     "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
     "PRIVACY_STATUS": "public",
