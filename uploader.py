@@ -1,9 +1,122 @@
+import os
 import logging
+import shutil
+import re
+from pathlib import Path
+
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+# ---------------------------------
+# CONFIGURATION
+# ---------------------------------
+CONFIG = {
+    "CLIPS_DIR": "Videos",
+    "UPLOADED_DIR": "Videos/Uploaded",
+    "CLIENT_SECRETS_FILE": "client_secrets.json",
+    "TOKEN_FILE": "token.json",
+    "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
+    "PRIVACY_STATUS": "public",
+    "CATEGORY_ID": "22",
+    "TAGS": ["Shorts"],
+    "MAX_RETRIES": 5
+}
+
+# ---------------------------------
+# LOGGING
+# ---------------------------------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ---------------------------------
+# AUTHENTICATION
+# ---------------------------------
+def get_authenticated_service():
+    creds = None
+
+    if os.path.exists(CONFIG["TOKEN_FILE"]):
+        creds = Credentials.from_authorized_user_file(
+            CONFIG["TOKEN_FILE"], CONFIG["SCOPES"]
+        )
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CONFIG["CLIENT_SECRETS_FILE"], CONFIG["SCOPES"]
+            )
+            creds = flow.run_local_server(port=0)
+
+        with open(CONFIG["TOKEN_FILE"], "w") as token:
+            token.write(creds.to_json())
+
+    return build("youtube", "v3", credentials=creds)
+
+# ---------------------------------
+# PARSE TXT
+# ---------------------------------
+def parse_txt_file(txt_path: Path):
+    lines = [line.strip() for line in txt_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not lines:
+        return txt_path.stem, ""
+
+    title = lines[0]
+    description = "\n".join(lines[1:])
+    return title, description
+
+# ---------------------------------
+# CLEAN TITLE
+# ---------------------------------
+def clean_title(title: str) -> str:
+    cleaned = re.sub(r'[^\w\s\-\.,!?&@#]+', '', title)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+# ---------------------------------
+# UPLOAD
+# ---------------------------------
+def upload_video(youtube, title, description, video_path):
+    body = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "tags": CONFIG["TAGS"],
+            "categoryId": CONFIG["CATEGORY_ID"]
+        },
+        "status": {
+            "privacyStatus": CONFIG["PRIVACY_STATUS"]
+        }
+    }
+
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
+    try:
+        logging.info(f"Uploading video: {title}")
+        status, response = request.next_chunk()
+
+        if response and "id" in response:
+            logging.info(f"Upload complete! Video ID: {response['id']}")
+            return True
+
+    except HttpError as e:
+        logging.error(f"Upload failed: {e}")
+
+    return False
+
+# ---------------------------------
+# MAIN: ONE VIDEO ONLY
+# ---------------------------------
 def uploader_once():
     youtube = get_authenticated_service()
+
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
-    uploaded_root.mkdir(exist_ok=True)
+    uploaded_root.mkdir(exist_ok=True, parents=True)
 
     folders = sorted([
         f for f in clips_root.iterdir()
@@ -14,26 +127,24 @@ def uploader_once():
         logging.info("No clip folders left. Exiting.")
         return
 
-    folder = folders[0]  # pick the first folder
+    folder = folders[0]
+
     mp4_files = list(folder.glob("*.mp4"))
     txt_files = list(folder.glob("*.txt"))
 
     if not mp4_files:
-        logging.warning(f"No video found in {folder}. Marking folder as skipped.")
-        new_name = folder.name
-        if not new_name.endswith("_skipped"):
-            new_name += "_skipped"
-        folder.rename(clips_root / new_name)
+        logging.warning(f"No video in {folder}. Skipping.")
+        folder.rename(clips_root / f"{folder.name}_skipped")
         return
 
     video_path = mp4_files[0]
+
     if txt_files:
         title, description = parse_txt_file(txt_files[0])
         title = clean_title(title)
     else:
         title = clean_title(video_path.stem)
         description = ""
-        logging.warning(f"No .txt found for {folder.name}. Using filename as title.")
 
     success = upload_video(youtube, title, description, str(video_path))
 
@@ -43,7 +154,7 @@ def uploader_once():
         logging.info(f"Uploaded and moved folder: {folder.name}")
 
 # ---------------------------------
-# ENTRY POINT
+# ENTRY
 # ---------------------------------
 if __name__ == "__main__":
     logging.info("Starting YouTube Shorts uploader...")
