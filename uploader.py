@@ -8,13 +8,14 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
 # ---------------------------------
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
     "CLIPS_DIR": "Videos",
-    "UPLOADED_FILE": "uploaded_videos.txt",  # NEW: file to track uploads
+    "UPLOADED_FILE": "uploaded_videos.txt",  # File to track uploaded folders
     "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
     "CLIENT_SECRETS_FILE": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\client_secrets.json",
     "TOKEN_FILE": "token.json",
@@ -22,8 +23,7 @@ CONFIG = {
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 10,
-    "UPLOAD_INTERVAL_HOURS": 5
+    "MAX_RETRIES": 10
 }
 
 # ---------------------------------
@@ -47,7 +47,6 @@ def write_secret(env_var: str, file_name: str):
 # AUTHENTICATION
 # ---------------------------------
 def get_authenticated_service():
-    # Write secrets from GitHub Actions environment variables
     write_secret("CLIENT_SECRETS_JSON", CONFIG["CLIENT_SECRETS_FILE"])
     write_secret("YOUTUBE_TOKEN_JSON", CONFIG["TOKEN_FILE"])
 
@@ -126,15 +125,15 @@ def uploader_once():
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    # Read uploaded folders
     uploaded_file_path = Path(CONFIG["UPLOADED_FILE"])
-    if uploaded_file_path.exists():
-        with uploaded_file_path.open("r", encoding="utf-8") as f:
-            uploaded_folders = set(line.strip() for line in f.readlines())
-    else:
-        uploaded_folders = set()
+    if not uploaded_file_path.exists():
+        uploaded_file_path.touch()
 
-    # Find next folder that hasn't been uploaded
+    # Load uploaded folders
+    with uploaded_file_path.open("r", encoding="utf-8") as f:
+        uploaded_folders = set(line.strip() for line in f.readlines())
+
+    # Find next folder to upload
     folders = sorted([
         f for f in clips_root.iterdir()
         if f.is_dir() and f.name not in uploaded_folders
@@ -144,7 +143,7 @@ def uploader_once():
         logging.info("No new clip folders left. Exiting.")
         return
 
-    folder = folders[0]  # pick the first folder
+    folder = folders[0]
     mp4_files = list(folder.glob("*.mp4"))
     txt_files = list(folder.glob("*.txt"))
 
@@ -164,7 +163,7 @@ def uploader_once():
     success = upload_video(youtube, title, description, str(video_path))
 
     if success:
-        # Append folder name to uploaded_videos.txt
+        # Track uploaded folder
         with uploaded_file_path.open("a", encoding="utf-8") as f:
             f.write(f"{folder.name}\n")
         logging.info(f"Uploaded folder recorded in {CONFIG['UPLOADED_FILE']}: {folder.name}")
