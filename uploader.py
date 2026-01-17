@@ -119,7 +119,7 @@ def uploader_once():
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
-    uploaded_root.mkdir(exist_ok=True)
+    uploaded_root.mkdir(parents=True, exist_ok=True)
 
     # Get all folders ready for upload
     folders = sorted([
