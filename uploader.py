@@ -47,8 +47,9 @@ def write_secret(env_var: str, file_name: str):
 # AUTHENTICATION
 # ---------------------------------
 def get_authenticated_service():
-    write_secret("GOOGLE_SERVICE_ACCOUNT_JSON", CONFIG["CLIENT_SECRETS_FILE"])
+    write_secret("CLIENT_SECRETS_JSON", CONFIG["CLIENT_SECRETS_FILE"])
     write_secret("YOUTUBE_TOKEN_JSON", CONFIG["TOKEN_FILE"])
+
 
     creds = None
     if os.path.exists(CONFIG["TOKEN_FILE"]):
