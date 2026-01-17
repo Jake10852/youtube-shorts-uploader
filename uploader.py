@@ -13,15 +13,17 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
-    "CLIPS_DIR": "Videos",  # Folder containing video subfolders
-    "UPLOADED_SUFFIX": "_uploaded",  # Folder renamed after upload
-    "CLIENT_SECRETS_FILE": "client_secrets.json",  # Written from secret
-    "TOKEN_FILE": "token.json",                 # Written from secret
+    "CLIPS_DIR": "Videos",
+    "UPLOADED_FILE": "uploaded_videos.txt",  # NEW: file to track uploads
+    "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
+    "CLIENT_SECRETS_FILE": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\client_secrets.json",
+    "TOKEN_FILE": "token.json",
     "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 5
+    "MAX_RETRIES": 10,
+    "UPLOAD_INTERVAL_HOURS": 5
 }
 
 # ---------------------------------
@@ -121,23 +123,33 @@ def upload_video(youtube, title, description, video_path):
 def uploader_once():
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
-    if not clips_root.exists():
-        logging.error(f"Clips folder does not exist: {clips_root}")
-        return
+    uploaded_root = Path(CONFIG["UPLOADED_DIR"])
+    uploaded_root.mkdir(exist_ok=True)
 
-    folders = sorted([f for f in clips_root.iterdir() if f.is_dir() and CONFIG["UPLOADED_SUFFIX"] not in f.name])
+    # Read uploaded folders
+    uploaded_file_path = Path(CONFIG["UPLOADED_FILE"])
+    if uploaded_file_path.exists():
+        with uploaded_file_path.open("r", encoding="utf-8") as f:
+            uploaded_folders = set(line.strip() for line in f.readlines())
+    else:
+        uploaded_folders = set()
+
+    # Find next folder that hasn't been uploaded
+    folders = sorted([
+        f for f in clips_root.iterdir()
+        if f.is_dir() and f.name not in uploaded_folders
+    ])
 
     if not folders:
-        logging.info("No new folders to upload. Exiting.")
+        logging.info("No new clip folders left. Exiting.")
         return
 
-    folder = folders[0]
+    folder = folders[0]  # pick the first folder
     mp4_files = list(folder.glob("*.mp4"))
     txt_files = list(folder.glob("*.txt"))
 
     if not mp4_files:
-        logging.warning(f"No video found in {folder}. Marking as skipped.")
-        folder.rename(clips_root / (folder.name + "_skipped"))
+        logging.warning(f"No video found in {folder}. Skipping folder.")
         return
 
     video_path = mp4_files[0]
@@ -152,10 +164,10 @@ def uploader_once():
     success = upload_video(youtube, title, description, str(video_path))
 
     if success:
-        # Rename folder after upload
-        new_name = folder.name + CONFIG["UPLOADED_SUFFIX"]
-        folder.rename(clips_root / new_name)
-        logging.info(f"Uploaded and renamed folder: {new_name}")
+        # Append folder name to uploaded_videos.txt
+        with uploaded_file_path.open("a", encoding="utf-8") as f:
+            f.write(f"{folder.name}\n")
+        logging.info(f"Uploaded folder recorded in {CONFIG['UPLOADED_FILE']}: {folder.name}")
 
 # ---------------------------------
 # ENTRY POINT
