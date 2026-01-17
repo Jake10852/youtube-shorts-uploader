@@ -7,23 +7,24 @@ from pathlib import Path
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 
 # ---------------------------------
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
     "CLIPS_DIR": "Videos",
-    "UPLOADED_DIR": "Videos/Uploaded",  # relative path for both local and GitHub Actions
+    "UPLOADED_DIR": "Videos/Uploaded",
     "CLIENT_SECRETS_FILE": "client_secrets.json",
     "TOKEN_FILE": "token.json",
     "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 5
+    "MAX_RETRIES": 10,
+    "UPLOAD_INTERVAL_HOURS": 5
 }
 
 # ---------------------------------
@@ -36,22 +37,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # ---------------------------------
 def get_authenticated_service():
     creds = None
-
-    # Load existing token if available
     if os.path.exists(CONFIG["TOKEN_FILE"]):
         creds = Credentials.from_authorized_user_file(CONFIG["TOKEN_FILE"], CONFIG["SCOPES"])
 
-    # Refresh or create credentials if needed
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            logging.info("Refreshing expired token...")
             creds.refresh(Request())
         else:
-            logging.info("Running OAuth flow for new credentials...")
             flow = InstalledAppFlow.from_client_secrets_file(CONFIG["CLIENT_SECRETS_FILE"], CONFIG["SCOPES"])
             creds = flow.run_local_server(port=0)
-        with open(CONFIG["TOKEN_FILE"], "w") as token_file:
-            token_file.write(creds.to_json())
+        with open(CONFIG["TOKEN_FILE"], "w") as token:
+            token.write(creds.to_json())
 
     return build("youtube", "v3", credentials=creds)
 
@@ -70,9 +66,9 @@ def parse_txt_file(txt_path: Path):
 # CLEAN TITLE
 # ---------------------------------
 def clean_title(title: str) -> str:
-    # Remove emojis & non-standard symbols
-    cleaned = re.sub(r"[^\w\s\-\.,!?&@#]+", "", title)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    """Remove emojis and invalid characters from a YouTube video title."""
+    cleaned = re.sub(r'[^\w\s\-\.,!?&@#]+', '', title)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     return cleaned
 
 # ---------------------------------
@@ -113,22 +109,23 @@ def upload_video(youtube, title, description, video_path):
     return False
 
 # ---------------------------------
-# UPLOAD ONE VIDEO
+# UPLOADER ONCE
 # ---------------------------------
 def uploader_once():
     youtube = get_authenticated_service()
+
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
-    uploaded_root.mkdir(parents=True, exist_ok=True)
+    uploaded_root.mkdir(parents=True, exist_ok=True)  # make sure folder exists
 
-    # Get all folders ready for upload
+    # Only folders that do NOT have 'uploaded' in their name
     folders = sorted([
         f for f in clips_root.iterdir()
-        if f.is_dir() and f.name != "Uploaded" and not f.name.endswith("_skipped")
+        if f.is_dir() and "uploaded" not in f.name.lower()
     ])
 
     if not folders:
-        logging.info("No clip folders left. Exiting.")
+        logging.info("No new folders to upload. Exiting.")
         return
 
     folder = folders[0]  # pick the first folder
@@ -138,7 +135,7 @@ def uploader_once():
     if not mp4_files:
         logging.warning(f"No video found in {folder}. Marking folder as skipped.")
         new_name = folder.name
-        if not new_name.endswith("_skipped"):
+        if not new_name.lower().endswith("_skipped"):
             new_name += "_skipped"
         folder.rename(clips_root / new_name)
         return
@@ -155,9 +152,10 @@ def uploader_once():
     success = upload_video(youtube, title, description, str(video_path))
 
     if success:
-        dest = uploaded_root / folder.name
-        folder.rename(dest)
-        logging.info(f"Uploaded and moved folder: {folder.name}")
+        # Mark folder as uploaded by renaming it
+        new_name = folder.name + "_uploaded"
+        folder.rename(clips_root / new_name)
+        logging.info(f"Uploaded and marked folder: {new_name}")
 
 # ---------------------------------
 # ENTRY POINT
