@@ -15,10 +15,10 @@ from google.auth.transport.requests import Request
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
-    "CLIPS_DIR": "Videos",  # Folder containing video folders
-    "UPLOADED_DIR": "Videos/Uploaded",  # Where uploaded folders are moved
-    "CLIENT_SECRETS_FILE": "client_secrets.json",  # OAuth client secrets
-    "TOKEN_FILE": "token.json",  # OAuth token file
+    "CLIPS_DIR": "Videos",
+    "UPLOADED_DIR": "Videos/Uploaded",  # relative path for both local and GitHub Actions
+    "CLIENT_SECRETS_FILE": "client_secrets.json",
+    "TOKEN_FILE": "token.json",
     "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
