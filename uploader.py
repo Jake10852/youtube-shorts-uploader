@@ -8,23 +8,24 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2 import service_account
 
 # ---------------------------------
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
     "CLIPS_DIR": "Videos",
-    "UPLOADED_DIR": "Videos/Uploaded",
-    "CLIENT_SECRETS_FILE": "client_secrets.json",
-    "TOKEN_FILE": "token.json",
-    "SCOPES": ["https://www.googleapis.com/auth/youtube.upload"],
+    "UPLOADED_DIR": r"C:\Users\PC\OneDrive\Documents\GitHub\automated_youtube_channel\Videos\Uploaded",
+
+    # This will now be SERVICE ACCOUNT JSON
+    "CLIENT_SECRETS_FILE": "service_account.json",
+
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 10
+    "MAX_RETRIES": 10,
 }
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -32,24 +33,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # AUTH
 # ---------------------------------
 def get_authenticated_service():
-    creds = None
-    if os.path.exists(CONFIG["TOKEN_FILE"]):
-        creds = Credentials.from_authorized_user_file(CONFIG["TOKEN_FILE"], CONFIG["SCOPES"])
+    """
+    Authenticate using Google SERVICE ACCOUNT instead of OAuth user token.
+    Works perfectly in GitHub Actions.
+    """
+    credentials = service_account.Credentials.from_service_account_file(
+        CONFIG["CLIENT_SECRETS_FILE"],
+        scopes=["https://www.googleapis.com/auth/youtube.upload"]
+    )
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CONFIG["CLIENT_SECRETS_FILE"],
-                CONFIG["SCOPES"]
-            )
-            creds = flow.run_local_server(port=0)
+    return build("youtube", "v3", credentials=credentials)
 
-        with open(CONFIG["TOKEN_FILE"], "w") as token:
-            token.write(creds.to_json())
-
-    return build("youtube", "v3", credentials=creds)
 
 # ---------------------------------
 # HELPERS
