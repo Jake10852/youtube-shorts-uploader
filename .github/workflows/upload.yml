@@ -1,42 +1,31 @@
-name: Upload YouTube Short
+name: YouTube Shorts Upload
 
 on:
   schedule:
-    - cron: '0 */5 * * *'   # every 5 hours
-  workflow_dispatch:
+    - cron: "0 */5 * * *"   # Every 5 hours
+  workflow_dispatch:        # Allows manual run
 
 jobs:
   upload:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
-          pip install --upgrade google-api-python-client \
-                              google-auth-httplib2 \
-                              google-auth-oauthlib
-
-      - name: Create credentials files
-        run: |
-          echo '${{ secrets.GOOGLE_SECRET }}' > client_secrets.json
-          echo '${{ secrets.YOUTUBE_TOKEN }}' > token.json
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run uploader
-        run: python uploader.py
-
-      # ===== THIS SAVES THE MEMORY BETWEEN RUNS =====
-      - name: Commit upload log
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
-          git config --global user.name "youtube-bot"
-          git config --global user.email "bot@bot.com"
-
-          git add uploaded_videos.txt
-          git commit -m "Update uploaded videos log" || echo "No changes"
-          git push
+          echo "$GOOGLE_SERVICE_ACCOUNT_JSON" > service_account.json
+          python uploader.py
