@@ -9,25 +9,31 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Checkout repo with push permissions
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: true  # allows committing & pushing back
+      # 1. Check out the repo
+      - uses: actions/checkout@v3
 
-      # Step 2: Set up Python
+      # 2. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      # Step 3: Install dependencies
+      # 3. Install dependencies
       - name: Install dependencies
         run: pip install --upgrade pip && pip install -r requirements.txt
 
-      # Step 4: Run uploader
-      - name: Run uploader
+      # 4. Run uploader
+      - name: Run YouTube uploader
         env:
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: python uploader.py
+
+      # 5. Commit uploaded_videos.txt back to repo if it changed
+      - name: Commit uploaded_videos.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add uploaded_videos.txt
+          git diff --cached --quiet || git commit -m "Update uploaded_videos.txt [skip ci]"
+          git push
