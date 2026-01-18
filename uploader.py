@@ -132,22 +132,20 @@ def uploader_once():
     mp4_files = list(clips_root.glob("*.mp4"))
 
     if not mp4_files:
-        logging.info("No videos found to upload. Exiting.")
+        logging.info("No videos found. Exiting.")
         return
+    
+    video_path = mp4_files[0]  # pick only the first MP4
+    title = clean_title(video_path.stem)
+    description = "Your Reddit story caption here\n\n" + " ".join(CONFIG["HASHTAGS"])
+    
+    success = upload_video(youtube, title, description, str(video_path))
+    
+    if success:
+        target_path = uploaded_root / video_path.name
+        video_path.rename(target_path)
+        logging.info(f"Uploaded and moved video to {target_path}")
 
-    for video_path in mp4_files:
-        title = clean_title(video_path.stem)
-        # Hardcoded caption + hashtags
-        description = "Your Reddit story caption here\n\n" + " ".join(CONFIG["HASHTAGS"])
-
-        logging.info(f"Preparing to upload video: {title}")
-        success = upload_video(youtube, title, description, str(video_path))
-
-        if success:
-            # Move uploaded video to Uploaded folder
-            target_path = uploaded_root / video_path.name
-            video_path.rename(target_path)
-            logging.info(f"Uploaded and moved video to {target_path}")
 
 
 # ---------------------------------
