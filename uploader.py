@@ -23,7 +23,8 @@ CONFIG = {
     "PRIVACY_STATUS": "public",
     "CATEGORY_ID": "22",
     "TAGS": ["Shorts"],
-    "MAX_RETRIES": 10
+    "MAX_RETRIES": 10,
+    "HASHTAGS": ["#RedditStories", "#Reddit", "#Shorts", "#StoryTime", "#FunnyStories"]
 }
 
 # ---------------------------------
@@ -162,6 +163,8 @@ def uploader_once():
         description = ""
         logging.warning(f"No .txt found for {folder.name}. Using filename as title.")
 
+    description += "\n\n" + " ".join(CONFIG["HASHTAGS"])
+    
     success = upload_video(youtube, title, description, str(video_path))
 
     if success:
