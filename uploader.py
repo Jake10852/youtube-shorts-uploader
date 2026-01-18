@@ -128,50 +128,27 @@ def uploader_once():
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    uploaded_file_path = Path(CONFIG["UPLOADED_FILE"])
-    if not uploaded_file_path.exists():
-        uploaded_file_path.touch()
-
-    # Load uploaded folders
-    with uploaded_file_path.open("r", encoding="utf-8") as f:
-        uploaded_folders = set(line.strip() for line in f.readlines())
-
-    # Find next folder to upload
-    folders = sorted([
-        f for f in clips_root.iterdir()
-        if f.is_dir() and f.name not in uploaded_folders
-    ])
-
-    if not folders:
-        logging.info("No new clip folders left. Exiting.")
-        return
-
-    folder = folders[0]
-    mp4_files = list(folder.glob("*.mp4"))
-    txt_files = list(folder.glob("*.txt"))
+    # Find all MP4s in the folder
+    mp4_files = list(clips_root.glob("*.mp4"))
 
     if not mp4_files:
-        logging.warning(f"No video found in {folder}. Skipping folder.")
+        logging.info("No videos found to upload. Exiting.")
         return
 
-    video_path = mp4_files[0]
-    if txt_files:
-        title, description = parse_txt_file(txt_files[0])
-        title = clean_title(title)
-    else:
+    for video_path in mp4_files:
         title = clean_title(video_path.stem)
-        description = ""
-        logging.warning(f"No .txt found for {folder.name}. Using filename as title.")
+        # Hardcoded caption + hashtags
+        description = "Your Reddit story caption here\n\n" + " ".join(CONFIG["HASHTAGS"])
 
-    description += "\n\n" + " ".join(CONFIG["HASHTAGS"])
-    
-    success = upload_video(youtube, title, description, str(video_path))
+        logging.info(f"Preparing to upload video: {title}")
+        success = upload_video(youtube, title, description, str(video_path))
 
-    if success:
-        # Track uploaded folder
-        with uploaded_file_path.open("a", encoding="utf-8") as f:
-            f.write(f"{folder.name}\n")
-        logging.info(f"Uploaded folder recorded in {CONFIG['UPLOADED_FILE']}: {folder.name}")
+        if success:
+            # Move uploaded video to Uploaded folder
+            target_path = uploaded_root / video_path.name
+            video_path.rename(target_path)
+            logging.info(f"Uploaded and moved video to {target_path}")
+
 
 # ---------------------------------
 # ENTRY POINT
