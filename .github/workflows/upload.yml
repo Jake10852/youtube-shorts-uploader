@@ -1,7 +1,7 @@
 name: Upload YouTube Shorts
 
 permissions:
-  contents: write   # 👈 ADD THIS
+  contents: write
 
 on:
   schedule:
@@ -12,52 +12,52 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      # 1. Check out the repo
+      # 1️⃣ Check out the repo
       - uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # 2️⃣ Restore previous progress artifact (so we know which parts were uploaded)
       - name: Restore previous part_progress.json
         uses: actions/download-artifact@v4
         with:
           name: part-progress
           path: .   # download to repo root
-        continue-on-error: true
+        continue-on-error: true  # first run may not have artifact yet
 
-
-      # 2. Set up Python
+      # 3️⃣ Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
-      # 3. Install dependencies
+      # 4️⃣ Install dependencies
       - name: Install dependencies
         run: pip install --upgrade pip && pip install -r requirements.txt
 
+      # 5️⃣ Install ffmpeg
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      # 6️⃣ Pull Git LFS files
       - name: Pull LFS files
         run: git lfs pull
 
-      # 4. Run uploader
+      # 7️⃣ Run uploader script
       - name: Run YouTube uploader
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
-
         run: python uploader.py
 
-
+      # 8️⃣ Upload updated progress artifact (so next workflow knows which parts are done)
       - name: Upload updated part_progress.json
         uses: actions/upload-artifact@v4
         with:
           name: part-progress
           path: part_progress.json
 
-
-      # 5. Commit uploaded_videos.txt back to repo if it changed
+      # 9️⃣ Commit uploaded_videos.txt back to repo if it changed
       - name: Commit uploaded_videos.txt
         run: |
           git config user.name "github-actions[bot]"
