@@ -12,13 +12,24 @@ from google.auth.transport.requests import Request
 import subprocess
 import json
 
+# ---------------------------------
+# GLOBAL PROGRESS FILE
+# ---------------------------------
 PROGRESS_FILE = Path("part_progress.json")
+
+# Load existing progress or create empty dict
+if PROGRESS_FILE.exists():
+    with open(PROGRESS_FILE, "r") as f:
+        progress = json.load(f)
+else:
+    progress = {}
+
 # ---------------------------------
 # CONFIGURATION
 # ---------------------------------
 CONFIG = {
     "CLIPS_DIR": "Videos",
-    "UPLOADED_FILE": "uploaded_videos.txt",  # File to track uploaded folders
+    "UPLOADED_FILE": "uploaded_videos.txt",
     "UPLOADED_DIR": "Videos/Uploaded",
     "CLIENT_SECRETS_FILE": "client_secrets.json",
     "TOKEN_FILE": "token.json",
@@ -49,43 +60,37 @@ def write_secret(env_var: str, file_name: str):
         f.write(value)
     logging.info(f"Wrote {file_name} from secret {env_var}")
 
+# ---------------------------------
+# GET VIDEO DURATION
+# ---------------------------------
 def get_duration(path):
     cmd = [
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration",
         "-of", "json", path
     ]
-
     result = subprocess.run(cmd, capture_output=True, text=True)
-
     logging.info(f"FFPROBE OUTPUT: {result.stdout}")
-    logging.info(f"FFPROBE ERROR: {result.stderr}")
-
     try:
         data = json.loads(result.stdout)
-
-        if "format" not in data:
-            logging.warning("No format key in ffprobe output – assuming 59s")
-            return 59
-
-        return float(data["format"].get("duration", 59))
-
+        return float(data.get("format", {}).get("duration", 59))
     except Exception as e:
         logging.warning(f"Could not read duration: {e}")
-        return 59  # safe fallback
+        return 59
 
+# ---------------------------------
+# SPLIT VIDEO INTO PARTS
+# ---------------------------------
 def get_video_parts(video_path):
     """Return a list of split part paths, creating them only if they don't exist."""
     base = Path(video_path)
     parts_dir = base.parent / "TempParts"
     parts_dir.mkdir(exist_ok=True)
 
-    # check for existing split parts
     existing_parts = sorted(parts_dir.glob(f"{base.stem}_part*.mp4"))
     if existing_parts:
         return [str(p) for p in existing_parts]
 
-    # no parts yet, split video
     duration = get_duration(str(base))
     total_parts = int(duration // MAX_SHORT_LENGTH) + 1
     parts = []
@@ -112,15 +117,12 @@ def get_video_parts(video_path):
 
     return parts
 
-
 # ---------------------------------
 # AUTHENTICATION
 # ---------------------------------
 def get_authenticated_service():
     write_secret("GOOGLE_SERVICE_ACCOUNT_JSON", CONFIG["CLIENT_SECRETS_FILE"])
     write_secret("YOUTUBE_TOKEN_JSON", CONFIG["TOKEN_FILE"])
-
-
 
     creds = None
     if os.path.exists(CONFIG["TOKEN_FILE"]):
@@ -136,17 +138,6 @@ def get_authenticated_service():
             token_file.write(creds.to_json())
 
     return build("youtube", "v3", credentials=creds)
-
-# ---------------------------------
-# PARSE TITLE & DESCRIPTION
-# ---------------------------------
-def parse_txt_file(txt_path: Path):
-    lines = [line.strip() for line in txt_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not lines:
-        return txt_path.stem, ""
-    title = lines[0]
-    description = "\n".join(lines[1:]).strip()
-    return title, description
 
 # ---------------------------------
 # CLEAN TITLE
@@ -192,13 +183,12 @@ def upload_video(youtube, title, description, video_path):
 # UPLOAD ONE VIDEO
 # ---------------------------------
 def uploader_once():
-    global progress
+    global progress  # <--- use the loaded global progress
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    
     videos = sorted(list(clips_root.glob("*.mp4")))
     if not videos:
         logging.info("No videos found. Exiting.")
@@ -217,7 +207,9 @@ def uploader_once():
 
         if next_index is None:
             # all parts uploaded → move original and cleanup
-            ...
+            uploaded_root.mkdir(exist_ok=True)
+            video.rename(uploaded_root / video.name)
+            logging.info(f"All parts uploaded for {video.name}. Moved to Uploaded folder.")
             continue
 
         # upload next part
@@ -232,9 +224,7 @@ def uploader_once():
             uploaded_indices.append(next_index)
             progress[video.name] = uploaded_indices
 
-            # -----------------------------
-            # SAVE PROGRESS HERE
-            # -----------------------------
+            # save progress after each successful upload
             with open(PROGRESS_FILE, "w") as f:
                 json.dump(progress, f)
 
