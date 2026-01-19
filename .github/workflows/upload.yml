@@ -17,6 +17,12 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Restore previous part_progress.json
+        uses: actions/download-artifact@v3
+        with:
+          name: part-progress
+          path: .   # download to repo root
+
 
       # 2. Set up Python
       - name: Set up Python
@@ -41,6 +47,14 @@ jobs:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
 
         run: python uploader.py
+
+
+      - name: Upload updated part_progress.json
+        uses: actions/upload-artifact@v3
+        with:
+          name: part-progress
+          path: part_progress.json
+
 
       # 5. Commit uploaded_videos.txt back to repo if it changed
       - name: Commit uploaded_videos.txt
