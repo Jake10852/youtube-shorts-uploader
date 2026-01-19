@@ -12,6 +12,7 @@ from google.auth.transport.requests import Request
 import subprocess
 import json
 
+PROGRESS_FILE = Path("part_progress.json")
 # ---------------------------------
 # CONFIGURATION
 # ---------------------------------
@@ -191,19 +192,13 @@ def upload_video(youtube, title, description, video_path):
 # UPLOAD ONE VIDEO
 # ---------------------------------
 def uploader_once():
+    global progress
     youtube = get_authenticated_service()
     clips_root = Path(CONFIG["CLIPS_DIR"])
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    PROGRESS_FILE = Path("part_progress.json")
-    if PROGRESS_FILE.exists():
-        with open(PROGRESS_FILE, "r") as f:
-            progress = json.load(f)
-    else:
-        progress = {}
-
-    # Find all videos that are not fully uploaded
+    
     videos = sorted(list(clips_root.glob("*.mp4")))
     if not videos:
         logging.info("No videos found. Exiting.")
@@ -212,43 +207,37 @@ def uploader_once():
     for video in videos:
         parts = get_video_parts(str(video))
         uploaded_indices = progress.get(video.name, [])
-        
+
         # find next part to upload
         next_index = None
         for i in range(1, len(parts)+1):
             if i not in uploaded_indices:
                 next_index = i
                 break
-        
+
         if next_index is None:
-            # all parts uploaded → move original away and remove temp parts
-            video.rename(uploaded_root / video.name)
-            temp_dir = video.parent / "TempParts"
-            if temp_dir.exists():
-                for f in temp_dir.glob(f"{video.stem}_part*.mp4"):
-                    f.unlink()
-            progress.pop(video.name, None)
-            PROGRESS_FILE.write_text(json.dumps(progress))
-            logging.info(f"All parts uploaded for {video.name}. Moved to Uploaded folder.")
+            # all parts uploaded → move original and cleanup
+            ...
             continue
 
-        # Upload the next part
-        next_part_path = parts[next_index - 1]
+        # upload next part
+        next_part_path = parts[next_index-1]
         title = clean_title(video.stem)
         if len(parts) > 1:
             title += f" (Part {next_index}/{len(parts)})"
-
         description = "Reddit story\n\n" + " ".join(CONFIG["HASHTAGS"])
 
         success = upload_video(youtube, title, description, next_part_path)
         if success:
             uploaded_indices.append(next_index)
             progress[video.name] = uploaded_indices
+
+            # -----------------------------
             # SAVE PROGRESS HERE
-    # -----------------------------
+            # -----------------------------
             with open(PROGRESS_FILE, "w") as f:
                 json.dump(progress, f)
-                
+
             logging.info(f"Uploaded {next_part_path} (Part {next_index}/{len(parts)})")
         break  # upload only one part per run
 
