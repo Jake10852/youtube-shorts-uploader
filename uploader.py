@@ -73,34 +73,25 @@ def get_duration(path):
         logging.warning(f"Could not read duration: {e}")
         return 59  # safe fallback
 
-def split_video(path):
-    """
-    Splits the video into MAX_SHORT_LENGTH chunks.
-    Returns a list of paths to the split parts.
-    """
-    duration = get_duration(path)
-    base = Path(path)
+def get_video_parts(video_path):
+    """Return a list of split part paths, creating them only if they don't exist."""
+    base = Path(video_path)
     parts_dir = base.parent / "TempParts"
     parts_dir.mkdir(exist_ok=True)
 
-    parts = []
+    # check for existing split parts
+    existing_parts = sorted(parts_dir.glob(f"{base.stem}_part*.mp4"))
+    if existing_parts:
+        return [str(p) for p in existing_parts]
 
-    if duration <= MAX_SHORT_LENGTH:
-        logging.info("Video <=59s – no split needed")
-        parts.append(str(base))
-        return parts
-
+    # no parts yet, split video
+    duration = get_duration(str(base))
     total_parts = int(duration // MAX_SHORT_LENGTH) + 1
+    parts = []
 
     for i in range(total_parts):
         out = parts_dir / f"{base.stem}_part{i+1}.mp4"
-        if out.exists():
-            # reuse existing part
-            parts.append(str(out))
-            continue
-
         start = i * MAX_SHORT_LENGTH
-
         cmd = [
             "ffmpeg", "-y",
             "-i", str(base),
@@ -115,12 +106,11 @@ def split_video(path):
             "-movflags", "+faststart",
             str(out)
         ]
-
-        logging.info(f"Splitting part {i+1}/{total_parts}: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
         parts.append(str(out))
 
     return parts
+
 
 # ---------------------------------
 # AUTHENTICATION
@@ -220,16 +210,16 @@ def uploader_once():
         return
 
     for video in videos:
-        parts = split_video(str(video))
+        parts = get_video_parts(str(video))
         uploaded_indices = progress.get(video.name, [])
-
-        # Find next part to upload
+        
+        # find next part to upload
         next_index = None
-        for i, _ in enumerate(parts, start=1):
+        for i in range(1, len(parts)+1):
             if i not in uploaded_indices:
                 next_index = i
                 break
-
+        
         if next_index is None:
             # all parts uploaded → move original away and remove temp parts
             video.rename(uploaded_root / video.name)
