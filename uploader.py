@@ -74,25 +74,36 @@ def get_duration(path):
         return 59  # safe fallback
 
 def split_video(path):
+    """
+    Splits the video into MAX_SHORT_LENGTH chunks.
+    Returns a list of paths to the split parts.
+    """
     duration = get_duration(path)
+    base = Path(path)
+    parts_dir = base.parent / "TempParts"
+    parts_dir.mkdir(exist_ok=True)
+
     parts = []
 
-    logging.info(f"Detected duration: {duration}")
-
     if duration <= MAX_SHORT_LENGTH:
-        logging.info("Video already under 60s – no split needed")
-        return [path]
+        logging.info("Video <=59s – no split needed")
+        parts.append(str(base))
+        return parts
 
-    base = Path(path)
     total_parts = int(duration // MAX_SHORT_LENGTH) + 1
 
     for i in range(total_parts):
+        out = parts_dir / f"{base.stem}_part{i+1}.mp4"
+        if out.exists():
+            # reuse existing part
+            parts.append(str(out))
+            continue
+
         start = i * MAX_SHORT_LENGTH
-        out = base.parent / f"{base.stem}_part{i+1}.mp4"
 
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(path),
+            "-i", str(base),
             "-ss", str(start),
             "-t", str(MAX_SHORT_LENGTH),
             "-map", "0:v:0",
@@ -105,8 +116,7 @@ def split_video(path):
             str(out)
         ]
 
-        logging.info(f"Running: {' '.join(cmd)}")
-
+        logging.info(f"Splitting part {i+1}/{total_parts}: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
         parts.append(str(out))
 
@@ -196,60 +206,56 @@ def uploader_once():
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    # Find all MP4s in the folder
-    mp4_files = sorted(list(clips_root.glob("*.mp4")))
-
-    if not mp4_files:
-        logging.info("No videos found. Exiting.")
-        return
-
-    original = mp4_files[0]
-    
-    # Split if needed
-    parts = split_video(str(original))
-
-    # Track which part to upload
     progress_file = Path("part_progress.json")
-
     if progress_file.exists():
         progress = json.loads(progress_file.read_text())
     else:
         progress = {}
 
-    next_part = None
-
-    for p in parts:
-        if p not in progress.get(original.name, []):
-            next_part = p
-            break
-
-    if not next_part:
-        # all parts uploaded → move original away
-        original.rename(uploaded_root / original.name)
-        progress.pop(original.name, None)
-        progress_file.write_text(json.dumps(progress))
-        logging.info("All parts uploaded for this video.")
+    # Find all videos that are not fully uploaded
+    videos = sorted(list(clips_root.glob("*.mp4")))
+    if not videos:
+        logging.info("No videos found. Exiting.")
         return
 
-    # Build title
-    part_index = parts.index(next_part) + 1
-    total = len(parts)
+    for video in videos:
+        parts = split_video(str(video))
+        uploaded_indices = progress.get(video.name, [])
 
-    title = clean_title(original.stem)
-    if total > 1:
-        title += f" (Part {part_index}/{total})"
+        # Find next part to upload
+        next_index = None
+        for i, _ in enumerate(parts, start=1):
+            if i not in uploaded_indices:
+                next_index = i
+                break
 
-    description = "Reddit story\n\n" + " ".join(CONFIG["HASHTAGS"])
+        if next_index is None:
+            # all parts uploaded → move original away and remove temp parts
+            video.rename(uploaded_root / video.name)
+            temp_dir = video.parent / "TempParts"
+            if temp_dir.exists():
+                for f in temp_dir.glob(f"{video.stem}_part*.mp4"):
+                    f.unlink()
+            progress.pop(video.name, None)
+            progress_file.write_text(json.dumps(progress))
+            logging.info(f"All parts uploaded for {video.name}. Moved to Uploaded folder.")
+            continue
 
-    success = upload_video(youtube, title, description, next_part)
-    
-    if success:
-        progress.setdefault(original.name, []).append(next_part)
-        progress_file.write_text(json.dumps(progress))
+        # Upload the next part
+        next_part_path = parts[next_index - 1]
+        title = clean_title(video.stem)
+        if len(parts) > 1:
+            title += f" (Part {next_index}/{len(parts)})"
 
-        logging.info(f"Uploaded {next_part}")
+        description = "Reddit story\n\n" + " ".join(CONFIG["HASHTAGS"])
 
-
+        success = upload_video(youtube, title, description, next_part_path)
+        if success:
+            uploaded_indices.append(next_index)
+            progress[video.name] = uploaded_indices
+            progress_file.write_text(json.dumps(progress))
+            logging.info(f"Uploaded {next_part_path} (Part {next_index}/{len(parts)})")
+        break  # upload only one part per run
 
 # ---------------------------------
 # ENTRY POINT
