@@ -206,9 +206,10 @@ def uploader_once():
     uploaded_root = Path(CONFIG["UPLOADED_DIR"])
     uploaded_root.mkdir(exist_ok=True)
 
-    progress_file = Path("part_progress.json")
+    PROGRESS_FILE = Path("part_progress.json")
     if progress_file.exists():
-        progress = json.loads(progress_file.read_text())
+        with open(PROGRESS_FILE, "r") as f:
+            progress = json.load(f)
     else:
         progress = {}
 
@@ -253,7 +254,11 @@ def uploader_once():
         if success:
             uploaded_indices.append(next_index)
             progress[video.name] = uploaded_indices
-            progress_file.write_text(json.dumps(progress))
+            # SAVE PROGRESS HERE
+    # -----------------------------
+            with open(PROGRESS_FILE, "w") as f:
+                json.dump(progress, f)
+                
             logging.info(f"Uploaded {next_part_path} (Part {next_index}/{len(parts)})")
         break  # upload only one part per run
 
