@@ -54,15 +54,33 @@ def get_duration(path):
         "-show_entries", "format=duration",
         "-of", "json", path
     ]
+
     result = subprocess.run(cmd, capture_output=True, text=True)
-    data = json.loads(result.stdout)
-    return float(data["format"]["duration"])
+
+    logging.info(f"FFPROBE OUTPUT: {result.stdout}")
+    logging.info(f"FFPROBE ERROR: {result.stderr}")
+
+    try:
+        data = json.loads(result.stdout)
+
+        if "format" not in data:
+            logging.warning("No format key in ffprobe output – assuming 59s")
+            return 59
+
+        return float(data["format"].get("duration", 59))
+
+    except Exception as e:
+        logging.warning(f"Could not read duration: {e}")
+        return 59  # safe fallback
 
 def split_video(path):
     duration = get_duration(path)
     parts = []
 
+    logging.info(f"Detected duration: {duration}")
+
     if duration <= MAX_SHORT_LENGTH:
+        logging.info("Video already under 60s – no split needed")
         return [path]
 
     base = Path(path)
@@ -77,13 +95,17 @@ def split_video(path):
             "-i", str(path),
             "-ss", str(start),
             "-t", str(MAX_SHORT_LENGTH),
-            "-map", "0:v:0", "-map", "0:a:0",
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-r", "30",
             "-c:a", "aac",
+            "-movflags", "+faststart",
             str(out)
         ]
+
+        logging.info(f"Running: {' '.join(cmd)}")
 
         subprocess.run(cmd, check=True)
         parts.append(str(out))
