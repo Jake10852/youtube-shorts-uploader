@@ -9,6 +9,8 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import subprocess
+import json
 
 # ---------------------------------
 # CONFIGURATION
@@ -27,6 +29,8 @@ CONFIG = {
     "HASHTAGS": ["#RedditStories", "#Reddit", "#Shorts", "#StoryTime", "#FunnyStories"]
 }
 
+MAX_SHORT_LENGTH = 59  # seconds
+
 # ---------------------------------
 # LOGGING
 # ---------------------------------
@@ -43,6 +47,48 @@ def write_secret(env_var: str, file_name: str):
     with open(file_name, "w", encoding="utf-8") as f:
         f.write(value)
     logging.info(f"Wrote {file_name} from secret {env_var}")
+
+def get_duration(path):
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "json", path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    data = json.loads(result.stdout)
+    return float(data["format"]["duration"])
+
+def split_video(path):
+    duration = get_duration(path)
+    parts = []
+
+    if duration <= MAX_SHORT_LENGTH:
+        return [path]
+
+    base = Path(path)
+    total_parts = int(duration // MAX_SHORT_LENGTH) + 1
+
+    for i in range(total_parts):
+        start = i * MAX_SHORT_LENGTH
+        out = base.parent / f"{base.stem}_part{i+1}.mp4"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(path),
+            "-ss", str(start),
+            "-t", str(MAX_SHORT_LENGTH),
+            "-map", "0:v:0", "-map", "0:a:0",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-r", "30",
+            "-c:a", "aac",
+            str(out)
+        ]
+
+        subprocess.run(cmd, check=True)
+        parts.append(str(out))
+
+    return parts
 
 # ---------------------------------
 # AUTHENTICATION
@@ -129,22 +175,57 @@ def uploader_once():
     uploaded_root.mkdir(exist_ok=True)
 
     # Find all MP4s in the folder
-    mp4_files = list(clips_root.glob("*.mp4"))
+    mp4_files = sorted(list(clips_root.glob("*.mp4")))
 
     if not mp4_files:
         logging.info("No videos found. Exiting.")
         return
+
+    original = mp4_files[0]
     
-    video_path = mp4_files[0]  # pick only the first MP4
-    title = clean_title(video_path.stem)
-    description = "Your Reddit story caption here\n\n" + " ".join(CONFIG["HASHTAGS"])
-    
-    success = upload_video(youtube, title, description, str(video_path))
+    # Split if needed
+    parts = split_video(str(original))
+
+    # Track which part to upload
+    progress_file = Path("part_progress.json")
+
+    if progress_file.exists():
+        progress = json.loads(progress_file.read_text())
+    else:
+        progress = {}
+
+    next_part = None
+
+    for p in parts:
+        if p not in progress.get(original.name, []):
+            next_part = p
+            break
+
+    if not next_part:
+        # all parts uploaded → move original away
+        original.rename(uploaded_root / original.name)
+        progress.pop(original.name, None)
+        progress_file.write_text(json.dumps(progress))
+        logging.info("All parts uploaded for this video.")
+        return
+
+    # Build title
+    part_index = parts.index(next_part) + 1
+    total = len(parts)
+
+    title = clean_title(original.stem)
+    if total > 1:
+        title += f" (Part {part_index}/{total})"
+
+    description = "Reddit story\n\n" + " ".join(CONFIG["HASHTAGS"])
+
+    success = upload_video(youtube, title, description, next_part)
     
     if success:
-        target_path = uploaded_root / video_path.name
-        video_path.rename(target_path)
-        logging.info(f"Uploaded and moved video to {target_path}")
+        progress.setdefault(original.name, []).append(next_part)
+        progress_file.write_text(json.dumps(progress))
+
+        logging.info(f"Uploaded {next_part}")
 
 
 
