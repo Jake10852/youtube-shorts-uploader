@@ -207,7 +207,7 @@ def uploader_once():
     uploaded_root.mkdir(exist_ok=True)
 
     PROGRESS_FILE = Path("part_progress.json")
-    if progress_file.exists():
+    if PROGRESS_FILE.exists():
         with open(PROGRESS_FILE, "r") as f:
             progress = json.load(f)
     else:
@@ -238,7 +238,7 @@ def uploader_once():
                 for f in temp_dir.glob(f"{video.stem}_part*.mp4"):
                     f.unlink()
             progress.pop(video.name, None)
-            progress_file.write_text(json.dumps(progress))
+            PROGRESS_FILE.write_text(json.dumps(progress))
             logging.info(f"All parts uploaded for {video.name}. Moved to Uploaded folder.")
             continue
 
