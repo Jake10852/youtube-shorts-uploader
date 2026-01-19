@@ -22,7 +22,7 @@ jobs:
         with:
           name: part-progress
           path: .   # download to repo root
-          if-no-artifact-found: ignore
+        continue-on-error: true
 
 
       # 2. Set up Python
