@@ -50,6 +50,15 @@ jobs:
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: python uploader.py
 
+      - name: Commit progress file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add part_progress.json
+          git diff --cached --quiet || git commit -m "Update progress [skip ci]"
+          git push
+
+
       # 8️⃣ Upload updated progress artifact (so next workflow knows which parts are done)
       - name: Upload updated part_progress.json
         uses: actions/upload-artifact@v4
