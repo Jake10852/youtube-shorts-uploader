@@ -40,8 +40,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # 6️⃣ Pull Git LFS files
-      - name: Pull LFS files
-        run: git lfs pull
+      #- name: Pull LFS files
+      #  run: git lfs pull
 
       # 7️⃣ Run uploader script
       - name: Run YouTube uploader
