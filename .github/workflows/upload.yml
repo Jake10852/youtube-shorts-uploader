@@ -39,6 +39,11 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      - name: Reset Videos directory
+        run: |
+          rm -rf Videos
+          mkdir -p Videos
+
       # Download all videos from Google Drive
       - name: Download videos from Google Drive
         run: |
