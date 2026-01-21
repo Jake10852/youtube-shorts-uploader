@@ -195,6 +195,11 @@ def uploader_once():
         return
 
     for video in videos:
+         # Skip zero-byte or invalid files
+        if video.stat().st_size < 1024:  # <1KB = definitely broken
+            logging.warning(f"Skipping invalid video file: {video.name}")
+            continue
+            
         parts = get_video_parts(str(video))
         uploaded_indices = progress.get(video.name, [])
 
