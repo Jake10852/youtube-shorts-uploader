@@ -222,7 +222,7 @@ def uploader_once():
         title = clean_title(video.stem)
         title = ""
         if len(parts) > 1:
-            title += f" Part {next_index}/{len(parts)}"
+            title += f" Reddit Stories - Part {next_index}/{len(parts)}"
         description = "Reddit story\n\n" + " ".join(CONFIG["HASHTAGS"])
 
         success = upload_video(youtube, title, description, next_part_path)
